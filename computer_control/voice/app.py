@@ -91,7 +91,10 @@ def transcribe(wav: bytes) -> str:
     r = httpx.post(CFG["stt_url"], files={"file": ("speech.wav", wav, "audio/wav")},
                    data={"model": CFG["stt_model"], "language": "en"}, timeout=60)
     r.raise_for_status()
-    return r.json().get("text", "").strip()
+    text = r.json().get("text", "").strip()
+    # Whisper hallucinates on silence/noise ("Good. Good. Good. ..."); collapse any word repeated 3+ times in a row.
+    text = re.sub(r"\b(\w+)([.,!?]?\s+\1\b[.,!?]?){2,}", r"\1", text, flags=re.I)
+    return text.strip()
 
 
 _speak_lock = threading.Lock()
@@ -163,6 +166,7 @@ VOICE_RULES = (
     "You are being driven by voice on Daryll's Windows PC through a small bubble, not a terminal. "
     "Reply in one to three short spoken sentences; no markdown, no lists, no code. "
     "Use the computer-control tools to look at and operate the desktop. Observe, act, observe again, then say what happened. "
+    "When you take a screenshot use max_width 1000 or less. "
     "Never tell him to click or type something himself. Do not bring any terminal window to the front; leave focus where his work is. "
     "If a request needs a destructive step, ask one short yes or no question first."
 )
@@ -188,14 +192,25 @@ class Brain:
             mcp_servers={"computer-control": {"type": "stdio", "command": py, "args": ["-m", "computer_control.adapters.mcp_server", "--client", "voice"]}},
             model=CFG["model"], effort=CFG["effort"], max_turns=CFG["max_turns"],
             include_partial_messages=False,
+            max_buffer_size=64 * 1024 * 1024,  # screenshots come back inline; the 1 MB default killed the session
         )
         self.client = ClaudeSDKClient(options=opts)
         await self.client.connect()
+        self.task = None
+        self.gen = 0
         log("brain connected")
 
+    async def _reconnect(self):
+        try:
+            await self.client.disconnect()
+        except Exception:
+            pass
+        await self._connect()
+
     def ask(self, text: str):
-        self.stop_event.clear()
-        asyncio.run_coroutine_threadsafe(self._ask(text), self.loop)
+        """Latest question wins: anything still in flight is interrupted and dropped."""
+        self.gen += 1
+        asyncio.run_coroutine_threadsafe(self._ask(text, self.gen), self.loop)
 
     def interrupt(self):
         self.stop_event.set()
@@ -204,13 +219,27 @@ class Brain:
         except Exception:
             pass
 
-    async def _ask(self, text: str):
+    async def _ask(self, text: str, gen: int):
         from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock, ResultMessage
+        if self.task and not self.task.done():
+            self.stop_event.set()
+            try:
+                await self.client.interrupt()
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(self.task, 15)
+            except Exception:
+                pass
+        if gen != self.gen:
+            return  # a newer question arrived while we waited
+        self.stop_event.clear()
+        self.task = asyncio.current_task()
         try:
             await self.client.query(text)
             spoken = []
             async for m in self.client.receive_response():
-                if self.stop_event.is_set():
+                if self.stop_event.is_set() or gen != self.gen:
                     break
                 if isinstance(m, AssistantMessage):
                     for b in m.content:
@@ -221,14 +250,21 @@ class Brain:
                             self.ui.set_state("speaking", b.text)
                             await asyncio.to_thread(speak, b.text, self.stop_event)
                 elif isinstance(m, ResultMessage):
-                    if not spoken and getattr(m, "result", None):
+                    if not spoken and getattr(m, "result", None) and gen == self.gen:
                         self.ui.set_state("speaking", m.result)
                         await asyncio.to_thread(speak, m.result, self.stop_event)
-            self.ui.set_state("idle", "")
+            if gen == self.gen:
+                self.ui.set_state("idle", "")
         except Exception as e:
             log(f"brain error: {e}")
-            self.ui.set_state("idle", f"error: {e}")
-            await asyncio.to_thread(speak, "Something went wrong. Check the voice log.", self.stop_event)
+            self.ui.set_state("thinking", "reconnecting...")
+            try:
+                await self._reconnect()
+                self.ui.set_state("idle", "reconnected, ask again")
+                await asyncio.to_thread(speak, "I lost my train of thought and reconnected. Ask me again.", threading.Event())
+            except Exception as e2:
+                log(f"reconnect failed: {e2}")
+                self.ui.set_state("idle", f"error: {e2}")
 
 
 # ---------------- bubble UI ----------------
