@@ -1,0 +1,27 @@
+[project]
+name = "computer-control"
+version = "0.1.0"
+description = "Local, agent-agnostic computer-control layer for a Windows workstation (accessibility-first)."
+requires-python = ">=3.12"
+dependencies = [
+  "uiautomation>=2.0.29",
+  "comtypes",
+  "mss",
+  "pillow",
+  "fastapi",
+  "uvicorn[standard]",
+  "mcp",
+  "httpx",
+  "pyperclip",
+]
+
+[project.scripts]
+cc-service = "computer_control.service.app:main"
+cc-mcp = "computer_control.adapters.mcp_server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["computer_control*"]
