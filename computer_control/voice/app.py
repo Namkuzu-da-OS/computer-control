@@ -38,8 +38,9 @@ DEFAULTS = {
     "sample_rate": 16000,
     "input_device": None,
     "cwd": "G:\\Shared drives\\BigPic",
-    "model": None,
+    "model": "claude-sonnet-5",  # voice needs snappy round trips; set null for the account default (Fable)
     "effort": "low",
+    "ack": "On it.",  # spoken immediately after transcription; "" to disable
     "max_turns": 40,
     "bubble_monitor": "primary",
 }
@@ -48,7 +49,10 @@ DEFAULTS = {
 def load_cfg() -> dict:
     c = dict(DEFAULTS)
     if os.path.exists(CFG_PATH):
-        c.update(json.load(open(CFG_PATH, encoding="utf-8-sig")))
+        saved = json.load(open(CFG_PATH, encoding="utf-8-sig"))
+        c.update(saved)
+        if set(DEFAULTS) - set(saved):  # new keys since the file was written: persist them with defaults
+            json.dump(c, open(CFG_PATH, "w", encoding="utf-8"), indent=2)
     else:
         json.dump(DEFAULTS, open(CFG_PATH, "w", encoding="utf-8"), indent=2)
     return c
@@ -165,7 +169,9 @@ def key_hook_thread(on_down, on_up):
 VOICE_RULES = (
     "You are being driven by voice on Daryll's Windows PC through a small bubble, not a terminal. "
     "Reply in one to three short spoken sentences; no markdown, no lists, no code. "
-    "Use the computer-control tools to look at and operate the desktop. Observe, act, observe again, then say what happened. "
+    "Use the computer-control tools to look at and operate the desktop. Speed matters more than certainty here: "
+    "for simple one-step requests (a hotkey, switching desktops, focusing a window, pressing a button you can see) act in one call and answer; "
+    "skip the verification screenshot unless the result is genuinely uncertain or he asked you to check. "
     "When you take a screenshot use max_width 1000 or less. "
     "Never tell him to click or type something himself. Do not bring any terminal window to the front; leave focus where his work is. "
     "If a request needs a destructive step, ask one short yes or no question first."
@@ -235,7 +241,11 @@ class Brain:
             return  # a newer question arrived while we waited
         self.stop_event.clear()
         self.task = asyncio.current_task()
+        t0 = time.time()
+        marks = []
         try:
+            if CFG.get("ack"):
+                asyncio.get_running_loop().run_in_executor(None, speak, CFG["ack"], self.stop_event)
             await self.client.query(text)
             spoken = []
             async for m in self.client.receive_response():
@@ -244,8 +254,11 @@ class Brain:
                 if isinstance(m, AssistantMessage):
                     for b in m.content:
                         if isinstance(b, ToolUseBlock):
-                            self.ui.set_state("working", b.name.replace("mcp__computer-control__", ""))
+                            name = b.name.replace("mcp__computer-control__", "")
+                            marks.append(f"{name}@{time.time() - t0:.1f}s")
+                            self.ui.set_state("working", name)
                         elif isinstance(b, TextBlock) and b.text.strip():
+                            marks.append(f"say@{time.time() - t0:.1f}s")
                             spoken.append(b.text)
                             self.ui.set_state("speaking", b.text)
                             await asyncio.to_thread(speak, b.text, self.stop_event)
@@ -253,6 +266,7 @@ class Brain:
                     if not spoken and getattr(m, "result", None) and gen == self.gen:
                         self.ui.set_state("speaking", m.result)
                         await asyncio.to_thread(speak, m.result, self.stop_event)
+            log(f"turn {time.time() - t0:.1f}s: " + " ".join(marks))
             if gen == self.gen:
                 self.ui.set_state("idle", "")
         except Exception as e:
