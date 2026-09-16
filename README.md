@@ -186,3 +186,14 @@ Worst case: open a terminal, run `scripts\start-service.ps1` and `scripts\start-
 
 The Linux Jarvis / namkuzu-da-os project is a separate system for the Linux nodes.
 This project is its Windows counterpart. They share only the Atlas speech endpoints.
+
+### Latency and model (2026-09-16 evening)
+
+- The voice brain runs **Sonnet 5** (`"model"` in `config/voice.json`); set it to `null` for the
+  account default (Fable 5.1, more capable, slower per step). It speaks the `ack` ("On it.")
+  immediately, and each turn logs `turn 9.5s: list_windows@0.0s say@6.5s ...` to `logs/voice.log`.
+- Known issue, first Sonnet session: asked to "switch back to desktop 3" it called
+  `close_window` twice instead of a Win+Ctrl+Arrow hotkey. A follow-up "desktop one" went
+  through correctly in 3 s. If Sonnet keeps misreading desktop switches, either go back to
+  Fable or add a deterministic "desktop N" shortcut in the app before the brain is consulted.
+- Whisper stays on tiny.en, TTS on Pocket kokoro, by choice: fast enough and good enough.
