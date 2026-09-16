@@ -142,3 +142,47 @@ G710 detection status.
 The user dictates by voice into whatever window is in front. Every agent sequence
 must end with `focus_window` on the agent's own chat/terminal window. Never leave
 the operated app in the foreground.
+
+## Voice front end (terminal-less) — `computer_control/voice/app.py`
+
+**Hold G1, talk, release.** G1 on the G710+ sends F13 (Logitech Gaming Software, M1
+profile). The app records while the key is held, transcribes on Atlas Whisper
+(`192.168.10.52:8910`, model tiny.en), hands the text to a headless Claude Code session
+(claude-agent-sdk, `bypassPermissions`, cwd = the BigPic drive so CLAUDE.md and memory
+load, MCP = this project's adapter), and speaks each reply through Atlas PocketTTS
+(`:8912`, voice kokoro). A small always-on-top bubble (bottom-right, primary monitor)
+shows state: yellow listening, blue thinking, purple working a tool, green speaking.
+Talk again mid-answer and the old answer is cut and dropped (latest question wins).
+
+- Config `config/voice.json` (talk key, STT/TTS urls + models, voice, mic device, effort).
+- Log `logs/voice.log` (what it heard, brain errors).
+- `scripts/start-voice.ps1` restart now · `scripts/install-voice.ps1` logon task `ComputerControlVoice`.
+- If the brain connection dies it reconnects itself and says so out loud.
+- Whisper repeat-hallucinations ("Good. Good. Good.") are collapsed before reaching the brain.
+
+### After a reboot
+
+Everything comes back without a terminal:
+
+| what | how |
+|---|---|
+| control service `:7710` | Scheduled Task `ComputerControlService` (at logon) — adapters also auto-start it |
+| voice bubble + G1 | Scheduled Task `ComputerControlVoice` (at logon) |
+| G-key mapping | Logitech Gaming Software autostarts with Windows; mappings live in its profile |
+
+Worst case: open a terminal, run `scripts\start-service.ps1` and `scripts\start-voice.ps1`.
+
+### Pedal layout (G710+, M1)
+
+| key | does |
+|---|---|
+| G1 | Talk to Claude (F13 → voice app) |
+| G6 | Wispr Flow dictation (held Ctrl + Left Win) |
+| Enter | Enter |
+
+"Summon Claude" (bring the terminal to front, `scripts/summon.py`) still exists as an LGS command, unbound.
+
+### Not this repo
+
+The Linux Jarvis / namkuzu-da-os project is a separate system for the Linux nodes.
+This project is its Windows counterpart. They share only the Atlas speech endpoints.
