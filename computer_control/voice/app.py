@@ -364,16 +364,37 @@ def main():
     state = {"recording": False}
 
     def boot():
+        # Google Drive mounts G: a minute or two AFTER logon, and this is an AtLogOn task: on 2026-09-17 the
+        # CLI spawned against a cwd that did not exist yet ([WinError 267]), boot gave up once, and the app sat
+        # alive but brainless until a manual restart. Wait for the drive, then retry forever — a live talk key
+        # with no brain behind it is the worst failure mode here.
         ui.set_state("thinking", "connecting to Claude...")
-        try:
-            brain["b"] = Brain(ui)
-            ui.set_state("idle", "")
-        except Exception as e:
-            log(f"connect failed: {e}"); ui.set_state("idle", f"connect failed: {e}")
+        cwd = CFG["cwd"]
+        waited = 0
+        while not os.path.isdir(cwd) and waited < 600:
+            if waited == 0:
+                log(f"waiting for cwd to appear: {cwd}")
+            ui.set_state("thinking", f"waiting for {cwd[:2]} ...")
+            time.sleep(2); waited += 2
+        if not os.path.isdir(cwd):
+            log(f"cwd never appeared after {waited}s: {cwd} (connecting anyway)")
+        delay = 5
+        while True:
+            try:
+                brain["b"] = Brain(ui)
+                ui.set_state("idle", "")
+                log("brain ready")
+                return
+            except Exception as e:
+                log(f"connect failed: {e}; retrying in {delay}s")
+                ui.set_state("idle", f"connect failed, retrying in {delay}s")
+                time.sleep(delay)
+                delay = min(delay * 2, 60)
     threading.Thread(target=boot, daemon=True).start()
 
     def on_down():
         if brain["b"] is None:
+            ui.set_state("idle", "not connected yet — still retrying")  # never swallow the key silently
             return
         if brain["b"].task and not brain["b"].task.done():
             brain["b"].interrupt()  # stop talking now; _ask drains the old turn before the new question is sent
