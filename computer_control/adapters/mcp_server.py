@@ -29,16 +29,33 @@ HEADERS = {"X-CC-Token": CFG["token"]}
 _PY = {"integer": int, "number": float, "boolean": bool, "string": str, "array": list, "object": dict}
 
 
-def _service_up() -> bool:
+def _service_up(timeout: float = 4.0) -> bool:
     try:
-        return httpx.get(BASE + "/health", timeout=1.5).status_code == 200
+        return httpx.get(BASE + "/health", timeout=timeout).status_code == 200
     except Exception:
         return False
 
 
+def _port_listening() -> bool:
+    """Someone already owns the service port (maybe busy with a long tool call and slow to answer /health)."""
+    import socket
+    host = CFG.get("host", "127.0.0.1")
+    with socket.socket() as sk:
+        sk.settimeout(1.0)
+        return sk.connect_ex(("127.0.0.1" if host in ("0.0.0.0", "") else host, int(CFG.get("port", 7710)))) == 0
+
+
 def ensure_service():
-    if _service_up():
-        return
+    # A busy service (screenshot, wait_for_element) can miss a short /health deadline. Never spawn a second copy
+    # while the port is owned: that left an idle duplicate running for 19 h on 2026-09-16/17.
+    for _ in range(3):
+        if _service_up():
+            return
+        if not _port_listening():
+            break
+        time.sleep(2.0)
+    if _port_listening():
+        raise RuntimeError("computer-control service owns the port but is not answering /health; run scripts/start-service.ps1")
     py = os.path.join(ROOT, ".venv", "Scripts", "pythonw.exe")
     if not os.path.exists(py):
         py = sys.executable
