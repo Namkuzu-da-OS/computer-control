@@ -14,6 +14,8 @@ import ctypes
 from ctypes import wintypes
 import json
 import os
+import queue
+import threading
 import time
 
 from ..service.config import ROOT
@@ -61,13 +63,48 @@ class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("u", _U)]
 
 
+# Keys Windows reports with the extended-key flag; without it the scan code is ambiguous.
+EXTENDED = {0x2D, 0x2E, 0x24, 0x23, 0x21, 0x22, 0x25, 0x26, 0x27, 0x28, 0x2C, 0x5B, 0x5C, 0xA3, 0xA5, 0x0D}
+
+
+def _one(vk, down):
+    """One key event, the way core.input does it: real scan code + extended flag.
+
+    A bare wVk with wScan=0 is enough for RegisterHotKey but NOT for apps that match on a
+    low-level hook (Wispr is one): it saw the events and ignored them, so every bridged key
+    silently did nothing after the 2026-09-17 reboot.
+    """
+    scan = user32.MapVirtualKeyW(vk, 0)
+    flags = (2 if not down else 0) | (1 if vk in EXTENDED else 0)
+    arr = (INPUT * 1)()
+    arr[0].type = 1
+    arr[0].ki = KEYBDINPUT(vk, scan, flags, 0, MARK)
+    user32.SendInput(1, arr, ctypes.sizeof(INPUT))
+
+
+def _send_now(vks, down):
+    """Separate calls with a gap. One batched SendInput lands in the same millisecond and the
+    receiver never sees a settled modifier state."""
+    for vk in (vks if down else list(reversed(vks))):
+        _one(vk, down)
+        time.sleep(0.02)
+
+
+_q = queue.Queue()
+
+
+def _worker():
+    while True:
+        vks, down = _q.get()
+        try:
+            _send_now(vks, down)
+        except Exception as e:
+            log(f"send failed: {e}")
+
+
 def send(vks, down):
-    seq = vks if down else list(reversed(vks))
-    arr = (INPUT * len(seq))()
-    for i, vk in enumerate(seq):
-        arr[i].type = 1
-        arr[i].ki = KEYBDINPUT(vk, 0, 0 if down else 2, 0, MARK)
-    user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT))
+    """Queued, never inline: the hook callback must return immediately or it stalls all input."""
+    _q.put((list(vks), down))
 
 
 WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 13, 0x0100, 0x0101, 0x0104, 0x0105
@@ -112,6 +149,7 @@ def main():
                 return 1
         return user32.CallNextHookEx(None, n, wparam, lparam)
 
+    threading.Thread(target=_worker, daemon=True).start()
     cb = HOOKPROC(proc)
     hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, cb, None, 0)
     if not hook:
