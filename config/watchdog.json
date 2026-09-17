@@ -1,7 +1,0 @@
-{
-  "boot_settle_s": 45,
-  "idle_required_s": 90,
-  "recheck_s": 900,
-  "glow_threshold": 1.2,
-  "speak": true
-}
