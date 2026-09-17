@@ -225,3 +225,26 @@ Three bugs, all found by Daryll on the pedal, all fixed and verified the same ev
 Healthy state to check against (`Get-Process`): exactly one `pythonw.exe` whose command line is
 `voice-launch.py`, its window title `tk`, child `claude.exe`, new `conhost` processes with
 window handle 0, no new `OpenConsole`. Log ends with `brain connected`.
+
+## keybridge — bare keys in, Wispr Flow combos out (2026-09-17)
+
+`computer_control/keybridge/app.py`, logon task `ComputerControlKeybridge`, restart with `scripts\start-keybridge.ps1`,
+config `config/keybridge.json`, log `logs/keybridge.log`.
+
+Why it exists: Wispr Flow refuses any shortcut without a modifier (max 3 keys), the Belkin n52te can only send single
+plain keys, and Wispr's default Ctrl+Win collided with desktop switching (Ctrl+Win+Arrow) — its own config showed the
+"dictation cancelled by another shortcut" notice fired 80 times. So every device sends one plain key and the bridge
+holds/taps the combo:
+
+| physical key | sent by | bridge sends | Wispr binding |
+|---|---|---|---|
+| Scroll Lock (hold) | keyboard, G710 **G4**, n52te (your pick) | Ctrl+Alt+F9 held | push-to-talk |
+| Insert (tap) | keyboard, G710 **G6**, n52te key 10 | Ctrl+Alt+F10 tapped | hands-free |
+| F13 / Pause-Break | G710 G1 / n52te key 03 | — (voice app) | Talk to Claude |
+
+Rules baked in: the bare key is swallowed (Scroll Lock never toggles, Insert never reaches an editor); a press with any
+modifier already down passes through (Shift+Insert paste still works); injected events carry `dwExtraInfo=0xB19C` so
+the bridge ignores its own output; modifiers are sent as LCtrl/LAlt because Wispr stores shortcuts as 162/164.
+Wispr's Ctrl+Win entries were removed on 2026-09-17; LGS profile macros "Wispr Flow"/"Wispr Hands-free" were rewritten
+in the profile XML (LCore stopped, `.bak-wispr-20260917` kept next to it, LCore restarted).
+Verified: bridged Scroll Lock hold and Insert tap each produced a Wispr history entry at 07:55.
