@@ -197,3 +197,31 @@ This project is its Windows counterpart. They share only the Atlas speech endpoi
   through correctly in 3 s. If Sonnet keeps misreading desktop switches, either go back to
   Fable or add a deterministic "desktop N" shortcut in the app before the brain is consulted.
 - Whisper stays on tiny.en, TTS on Pocket kokoro, by choice: fast enough and good enough.
+
+### Pitfalls fixed 2026-09-16 (late evening) — read before touching `voice/app.py` or the task
+
+Three bugs, all found by Daryll on the pedal, all fixed and verified the same evening.
+
+1. **"You answer the previous question while doing the current one."** (`c75dff3`)
+   The SDK exposes one ordered message stream per session. `Brain._ask` used to `break` out of
+   `receive_response()` when G1 interrupted a turn, leaving that turn's remaining messages and
+   its `ResultMessage` queued. The next question read the leftovers first (spoke the old answer)
+   and stopped at the old result, so replies ran exactly one question behind while tool calls,
+   executed inside the CLI, stayed current. **Rule: never abandon a turn mid-stream.** An
+   interrupted turn now drains silently to its own `ResultMessage` (`(interrupted, drained K)`
+   in the log), the next `query()` goes out only after that (15 s cap, else reconnect), and G1
+   only interrupts when a turn is in flight. Fingerprint if it returns: `voice.log` turn lines
+   with every mark at `@0.0s`. Repro that proved it: interrupt a 10-tool-call turn after 4 s,
+   ask for PINEAPPLE, then BANANA; old code said nothing, then PINEAPPLE.
+2. **A terminal window came with the app; closing it killed everything.** (`2c2fc3f`)
+   `.venv\Scripts\pythonw.exe` is a uv trampoline that spawns the base console `python.exe`.
+   The task now runs the base interpreter's real `pythonw.exe` with `scripts/voice-launch.py`
+   (adds the venv site-packages). `install-voice.ps1` reads the base path from `pyvenv.cfg`.
+3. **A Windows Terminal tab still appeared.** (`8bda335`)
+   With a GUI parent, the Claude CLI child asked for a fresh console, and Windows Terminal
+   (default terminal app) hosts it as a tab. `app.py` now patches `subprocess.Popen` to add
+   `CREATE_NO_WINDOW`; MCP grandchildren inherit the hidden console.
+
+Healthy state to check against (`Get-Process`): exactly one `pythonw.exe` whose command line is
+`voice-launch.py`, its window title `tk`, child `claude.exe`, new `conhost` processes with
+window handle 0, no new `OpenConsole`. Log ends with `brain connected`.
