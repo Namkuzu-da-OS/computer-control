@@ -183,6 +183,8 @@ class Brain:
         self.ui = ui
         self.loop = asyncio.new_event_loop()
         self.client = None
+        self.task = None
+        self.gen = 0
         self.stop_event = threading.Event()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         asyncio.run_coroutine_threadsafe(self._connect(), self.loop).result()
@@ -203,7 +205,6 @@ class Brain:
         self.client = ClaudeSDKClient(options=opts)
         await self.client.connect()
         self.task = None
-        self.gen = 0
         log("brain connected")
 
     async def _reconnect(self):
@@ -228,15 +229,20 @@ class Brain:
     async def _ask(self, text: str, gen: int):
         from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock, ResultMessage
         if self.task and not self.task.done():
+            # Interrupt the in-flight turn and let its reader DRAIN to its ResultMessage. The SDK exposes one
+            # ordered stream per session: if we abandon a turn mid-stream, its leftover messages (and its result
+            # marker) are read by the next turn, which then speaks the previous answer and stops one result early.
+            # That was the "one step behind" bug (2026-09-16).
             self.stop_event.set()
             try:
                 await self.client.interrupt()
             except Exception:
                 pass
             try:
-                await asyncio.wait_for(self.task, 15)
+                await asyncio.wait_for(asyncio.shield(self.task), 15)
             except Exception:
-                pass
+                log("drain timed out; reconnecting for a clean stream")
+                await self._reconnect()
         if gen != self.gen:
             return  # a newer question arrived while we waited
         self.stop_event.clear()
@@ -248,29 +254,34 @@ class Brain:
                 asyncio.get_running_loop().run_in_executor(None, speak, CFG["ack"], self.stop_event)
             await self.client.query(text)
             spoken = []
+            stale = 0
             async for m in self.client.receive_response():
-                if self.stop_event.is_set() or gen != self.gen:
-                    break
+                live = not self.stop_event.is_set() and gen == self.gen
+                if not live:
+                    stale += 1  # keep consuming silently until this turn's ResultMessage
                 if isinstance(m, AssistantMessage):
                     for b in m.content:
                         if isinstance(b, ToolUseBlock):
                             name = b.name.replace("mcp__computer-control__", "")
                             marks.append(f"{name}@{time.time() - t0:.1f}s")
-                            self.ui.set_state("working", name)
-                        elif isinstance(b, TextBlock) and b.text.strip():
+                            if live:
+                                self.ui.set_state("working", name)
+                        elif isinstance(b, TextBlock) and b.text.strip() and live:
                             marks.append(f"say@{time.time() - t0:.1f}s")
                             spoken.append(b.text)
                             self.ui.set_state("speaking", b.text)
                             await asyncio.to_thread(speak, b.text, self.stop_event)
                 elif isinstance(m, ResultMessage):
-                    if not spoken and getattr(m, "result", None) and gen == self.gen:
+                    if live and not spoken and getattr(m, "result", None):
                         self.ui.set_state("speaking", m.result)
                         await asyncio.to_thread(speak, m.result, self.stop_event)
-            log(f"turn {time.time() - t0:.1f}s: " + " ".join(marks))
+            log(f"turn {time.time() - t0:.1f}s{' (interrupted, drained %d)' % stale if stale else ''}: " + " ".join(marks))
             if gen == self.gen:
                 self.ui.set_state("idle", "")
         except Exception as e:
             log(f"brain error: {e}")
+            if gen != self.gen:
+                return  # superseded turn: the newer turn owns the stream and any reconnect
             self.ui.set_state("thinking", "reconnecting...")
             try:
                 await self._reconnect()
@@ -348,7 +359,8 @@ def main():
     def on_down():
         if brain["b"] is None:
             return
-        brain["b"].interrupt()
+        if brain["b"].task and not brain["b"].task.done():
+            brain["b"].interrupt()  # stop talking now; _ask drains the old turn before the new question is sent
         state["recording"] = True
         ui.set_state("listening", "")
         try:
