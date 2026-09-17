@@ -27,6 +27,20 @@ import sounddevice as sd
 
 from ..service.config import ROOT
 
+# This app runs under pythonw (no console). Any console child (the claude CLI, MCP servers) would otherwise
+# get a brand-new visible console, which Windows opens as a Windows Terminal tab; closing that tab killed the
+# whole app (2026-09-16). Force CREATE_NO_WINDOW on every subprocess; grandchildren inherit the hidden console.
+if os.name == "nt":
+    import subprocess
+
+    _popen_init = subprocess.Popen.__init__
+
+    def _popen_init_hidden(self, *a, **kw):
+        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        _popen_init(self, *a, **kw)
+
+    subprocess.Popen.__init__ = _popen_init_hidden
+
 CFG_PATH = os.path.join(ROOT, "config", "voice.json")
 DEFAULTS = {
     "talk_vk": 0x7C,  # F13
