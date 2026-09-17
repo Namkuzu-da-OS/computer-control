@@ -43,7 +43,7 @@ if os.name == "nt":
 
 CFG_PATH = os.path.join(ROOT, "config", "voice.json")
 DEFAULTS = {
-    "talk_vk": 0x7C,  # F13
+    "talk_vk": [0x7C, 0x13],  # hold-to-talk keys: F13 = G710 G1 (LGS), Pause/Break = Belkin n52te key 03 (its 2008 editor has no F13)
     "stt_url": "http://192.168.10.52:8910/v1/audio/transcriptions",
     "stt_model": "Systran/faster-whisper-tiny.en",  # large-v3-turbo returns 500 on Atlas today (2026-09-16)
     "tts_url": "http://192.168.10.52:8912/v1/audio/speech",
@@ -157,11 +157,13 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
 
 def key_hook_thread(on_down, on_up):
     down = {"v": False}
+    tv = CFG["talk_vk"]
+    talk_keys = set(tv if isinstance(tv, list) else [tv])
 
     def proc(n, wparam, lparam):
         if n >= 0:
             k = ctypes.cast(lparam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-            if k.vkCode == CFG["talk_vk"]:
+            if k.vkCode in talk_keys:
                 if wparam in (WM_KEYDOWN, WM_SYSKEYDOWN) and not down["v"]:
                     down["v"] = True; on_down()
                 elif wparam in (WM_KEYUP, WM_SYSKEYUP):
