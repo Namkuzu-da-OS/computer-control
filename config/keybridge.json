@@ -2,7 +2,7 @@
   "bindings": [
     {
       "name": "wispr push-to-talk",
-      "vk": 46,
+      "vk": 36,
       "mode": "hold",
       "send": [
         "ctrl",

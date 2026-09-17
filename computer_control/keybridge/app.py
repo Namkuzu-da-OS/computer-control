@@ -5,7 +5,7 @@ Ctrl+Win (Wispr's default) collides with desktop switching. So every device (key
 sends one plain key, and this bridge holds/taps the combo Wispr is configured for.
 
 Run:  pythonw scripts\keybridge-launch.py   (scripts\install-keybridge.ps1 adds the logon task ComputerControlKeybridge)
-Config: config\keybridge.json  ->  {"bindings": [{"vk": 46, "mode": "hold", "send": ["ctrl","alt","f9"], "name": "wispr push-to-talk"}, ...]}
+Config: config\keybridge.json  ->  {"bindings": [{"vk": 36, "mode": "hold"}, "send": ["ctrl","alt","f9"], "name": "wispr push-to-talk"}, ...]}
   mode "hold": combo is pressed while the key is held, released when it is released.
   mode "tap":  combo is pressed+released once on key down.
 The bare key is swallowed only when no modifier is held, so Shift+Insert etc. still work.
@@ -22,7 +22,7 @@ CFG_PATH = os.path.join(ROOT, "config", "keybridge.json")
 LOG = os.path.join(ROOT, "logs", "keybridge.log")
 os.makedirs(os.path.dirname(LOG), exist_ok=True)
 DEFAULT = {"bindings": [
-    {"name": "wispr push-to-talk", "vk": 0x2E, "mode": "hold", "send": ["ctrl", "alt", "f9"]},   # Delete (never Scroll Lock/Caps/Num: toggle keys show an OSD)
+    {"name": "wispr push-to-talk", "vk": 0x24, "mode": "hold", "send": ["ctrl", "alt", "f9"]},   # Home (never Scroll Lock/Caps/Num: toggle keys show an OSD; Delete is used)
     {"name": "wispr hands-free", "vk": 0x2D, "mode": "tap", "send": ["ctrl", "alt", "f10"]},   # Insert
 ]}
 MARK = 0xB19C  # dwExtraInfo on everything we inject, so our own events pass through the hook
