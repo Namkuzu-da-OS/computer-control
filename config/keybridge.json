@@ -1,0 +1,24 @@
+{
+  "bindings": [
+    {
+      "name": "wispr push-to-talk",
+      "vk": 46,
+      "mode": "hold",
+      "send": [
+        "ctrl",
+        "alt",
+        "f9"
+      ]
+    },
+    {
+      "name": "wispr hands-free",
+      "vk": 45,
+      "mode": "tap",
+      "send": [
+        "ctrl",
+        "alt",
+        "f10"
+      ]
+    }
+  ]
+}

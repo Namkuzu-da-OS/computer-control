@@ -238,13 +238,13 @@ holds/taps the combo:
 
 | physical key | sent by | bridge sends | Wispr binding |
 |---|---|---|---|
-| Scroll Lock (hold) | keyboard, G710 **G4**, n52te (your pick) | Ctrl+Alt+F9 held | push-to-talk |
+| Delete (hold) | keyboard, G710 **G4**, n52te key 04 | Ctrl+Alt+F9 held | push-to-talk |
 | Insert (tap) | keyboard, G710 **G6**, n52te key 10 | Ctrl+Alt+F10 tapped | hands-free |
 | F13 / Pause-Break | G710 G1 / n52te key 03 | — (voice app) | Talk to Claude |
 
-Rules baked in: the bare key is swallowed (Scroll Lock never toggles, Insert never reaches an editor); a press with any
+Rules baked in: the bare key is swallowed (Delete/Insert never reach an editor); a press with any
 modifier already down passes through (Shift+Insert paste still works); injected events carry `dwExtraInfo=0xB19C` so
 the bridge ignores its own output; modifiers are sent as LCtrl/LAlt because Wispr stores shortcuts as 162/164.
 Wispr's Ctrl+Win entries were removed on 2026-09-17; LGS profile macros "Wispr Flow"/"Wispr Hands-free" were rewritten
 in the profile XML (LCore stopped, `.bak-wispr-20260917` kept next to it, LCore restarted).
-Verified: bridged Scroll Lock hold and Insert tap each produced a Wispr history entry at 07:55.
+Verified: bridged hold and Insert tap each produced a Wispr history entry at 07:55 (first pass used Scroll Lock; replaced by Delete at 08:07 because Scroll Lock is a toggle key with an on-screen indicator on this machine — **never bind Caps Lock, Num Lock or Scroll Lock**, Daryll's rule).
