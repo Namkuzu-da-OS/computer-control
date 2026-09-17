@@ -238,8 +238,8 @@ holds/taps the combo:
 
 | physical key | sent by | bridge sends | Wispr binding |
 |---|---|---|---|
-| Home (hold) | keyboard, G710 **G4**, n52te key 04 | Ctrl+Alt+F9 held | push-to-talk |
-| Insert (tap) | keyboard, G710 **G6**, n52te key 10 | Ctrl+Alt+F10 tapped | hands-free |
+| Home (hold) | keyboard, G710 **G4**, n52te key 10 | Ctrl+Alt+F9 held | push-to-talk |
+| Insert (tap) | keyboard, G710 **G6**, n52te key 04 | Ctrl+Alt+F10 tapped | hands-free |
 | F13 / Pause-Break | G710 G1 / n52te key 03 | — (voice app) | Talk to Claude |
 
 Rules baked in: the bare key is swallowed (Home/Insert never reach an editor); a press with any
