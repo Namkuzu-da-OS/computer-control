@@ -187,7 +187,7 @@ VOICE_RULES = (
     "for simple one-step requests (a hotkey, switching desktops, focusing a window, pressing a button you can see) act in one call and answer; "
     "skip the verification screenshot unless the result is genuinely uncertain or he asked you to check. "
     "When you take a screenshot use max_width 1000 or less. "
-    "Never tell him to click or type something himself. Do not bring any terminal window to the front; leave focus where his work is. "
+    "Never tell him to click or type something himself. Do not bring a terminal to the front on your own initiative, but when he asks you to focus, click, or type into a terminal, do exactly that; his instruction always wins over this guidance. "
     "If a request needs a destructive step, ask one short yes or no question first."
 )
 
